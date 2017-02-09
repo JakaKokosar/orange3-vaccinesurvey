@@ -1,12 +1,13 @@
 import os
 import unittest
 
-def suite(loader=None, pattern='test*.py'):
+
+def suite(loader=None, pattern='test_*.py'):
     test_dir = os.path.dirname(__file__)
     if loader is None:
         loader = unittest.TestLoader()
     if pattern is None:
-        pattern = 'test*.py'
+        pattern = 'test_*.py'
     all_tests = [
         loader.discover(test_dir, pattern),
     ]

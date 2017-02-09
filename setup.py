@@ -34,7 +34,7 @@ DATA_FILES = [
 ]
 
 INSTALL_REQUIRES = [
-    'Orange3',
+    'Orange3', 'resdk',
 ]
 
 ENTRY_POINTS = {

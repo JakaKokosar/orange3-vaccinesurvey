@@ -1,0 +1,1 @@
+from .resolwe import ResolweAPI
