@@ -1,4 +1,7 @@
 """Resolwe api"""
+import requests
+
+
 from resdk import Resolwe
 from Orange.data import ContinuousVariable, StringVariable, Domain, Table
 
@@ -39,8 +42,26 @@ def to_orange_table(samples):
 class ResolweAPI(object):
 
     def __init__(self, user, password, url):
-        self._res = Resolwe(user, password, url)
-        self.aut = self._res.auth
+        try:
+            self._res = Resolwe(user, password, url)
+        except requests.exceptions.InvalidURL as e:
+            raise ResolweServerException(e)
+        except ValueError as e:  # TODO: is there a better way? resdk returns only ValueError
+            msg = str(e)
+            if msg == 'Response HTTP status code 400. Invalid credentials?':
+                raise ResolweCredentialsException(msg)
+            elif msg == 'Server not accessible on {}. Wrong url?'.format(url):
+                raise ResolweServerException(msg)
+            else:
+                raise
 
     def get_samples(self):
         return self._res.sample.filter(descriptor_schema__slug='sample-vaccinesurvey')
+
+
+class ResolweCredentialsException(Exception):
+    """Invalid credentials?"""
+
+
+class ResolweServerException(Exception):
+    """Wrong url?"""
