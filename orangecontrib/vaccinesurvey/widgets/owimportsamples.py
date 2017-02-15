@@ -5,6 +5,7 @@ import requests_cache
 
 from AnyQt.QtWidgets import QLineEdit
 from AnyQt.QtWidgets import QSizePolicy as Policy
+from AnyQt.QtCore import pyqtSignal
 
 from Orange.misc import environ
 from Orange.data import Table
@@ -23,7 +24,8 @@ try:
 except OSError:
     pass
 cache_file = os.path.join(cache_path, 'vaccinesurvey_cache')
-requests_cache.install_cache(cache_name=cache_file, backend='sqlite')
+#  cache successful requests for one hour
+requests_cache.install_cache(cache_name=cache_file, backend='sqlite', expire_after=3600)
 
 
 class OWImportSamples(OWWidget):
@@ -74,17 +76,28 @@ class OWImportSamples(OWWidget):
         if self.username and self.password:
             self.connect()
 
+    def _on_exception(self):
+        self._update_info(error_msg='Error while downloading data...\n'
+                                    'Please check your connection.')
+
     def _update_info(self, error_msg=None):
         if not error_msg:
             if self._datatask is not None:
                 if not self._datatask.future().done():
                     self.info.setText('Retrieving data...')
+                    self._handle_inputs(False)
             if self.data:
-                self.info.setText('{} samples loaded.'.format(len(self.data)))
+                self._handle_inputs(True)
+                self.info.setText('Data ready: {} samples loaded.'.format(len(self.data)))
         else:
             self.info.setText(error_msg)
 
-    def _handle_styles(self, login=False, server=False):
+    def _handle_inputs(self, enable):
+        self.name_field.setEnabled(enable)
+        self.pass_field.setEnabled(enable)
+        self.servers.setEnabled(enable)
+
+    def _handle_styles(self, login=False, server=False, user=False, passwd=False):
         if login:
             self.name_field.setFocus()
             self.name_field.setStyleSheet(error_red)
@@ -92,6 +105,12 @@ class OWImportSamples(OWWidget):
         elif server:
             self.servers.setFocus()
             self.servers.setStyleSheet(error_red)
+        elif user:
+            self.name_field.setFocus()
+            self.name_field.setStyleSheet(error_red)
+        elif passwd:
+            self.pass_field.setFocus()
+            self.pass_field.setStyleSheet(error_red)
 
     def _reset_styles(self):
         self.pass_field.setStyleSheet('')
@@ -103,11 +122,9 @@ class OWImportSamples(OWWidget):
             if self.username and self.password:
                 self.connect()
             elif not self.username:
-                self.name_field.setFocus()
-                self.name_field.setStyleSheet(error_red)
+                self._handle_styles(user=True)
             elif not self.password:
-                self.pass_field.setFocus()
-                self.pass_field.setStyleSheet(error_red)
+                self._handle_styles(passwd=True)
         else:
             self._handle_styles(server=True)
 
@@ -116,31 +133,26 @@ class OWImportSamples(OWWidget):
         self.pass_field.setFocus()
 
     def auth_changed(self):
-        self._reset_styles()
         self.auth_set()
-        self.connect()
-
-    def get_data(self):
-        return self.res.get_samples()
+        if self.servers.itemText(self.selected_server) == '':
+            self._handle_styles(server=True)
+        else:
+            self._reset_styles()
+            self.connect()
 
     def commit(self):
-        try:
-            self.data = self._datatask.result()
-        except requests.exceptions.ConnectionError:
-            self._update_info(error_msg='Error while connecting to the server!')
-            self.data = None
-        finally:
-            self._datatask = None
-
+        self.data = self._datatask.result()
+        self._datatask = None
         self._update_info()
         if self.data:
             self.send("Data", to_orange_table(self.data))
 
     def connect(self):
         self.res = None
+        self.data = None
+
         if self.username and self.password:
             self._reset_styles()
-
             """Store widget settings (Login)"""
             self.combo_items = [self.servers.itemText(i) for i in range(self.servers.count())]
             self.selected_server = self.servers.currentIndex()
@@ -148,7 +160,6 @@ class OWImportSamples(OWWidget):
             try:
                 self.res = ResolweAPI(self.username, self.password, self.servers.itemText(self.selected_server))
             except (ResolweCredentialsException, ResolweServerException, Exception) as e:
-                self.data = None
                 error_name = type(e).__name__
 
                 if error_name == 'ResolweCredentialsException':
@@ -161,11 +172,26 @@ class OWImportSamples(OWWidget):
                     self._update_info(error_msg=str(e))
 
             if self.res:
-                self._datatask = Task(function=self.get_data)
+                self._datatask = DownloadTask(self.res)
                 self._datatask.finished.connect(self.commit)
+                self._datatask.exception.connect(self._on_exception)
                 self._executor.submit(self._datatask)
                 self._update_info()
 
     def onDeleteWidget(self):
         super().onDeleteWidget()
         self._executor.shutdown(wait=False)
+
+
+class DownloadTask(Task):
+    exception = pyqtSignal(Exception)
+
+    def __init__(self, res):
+        super().__init__()
+        self.res = res
+
+    def run(self):
+        try:
+            return list(self.res.get_samples())
+        except requests.exceptions.ConnectionError as e:
+            self.exception.emit(e)
