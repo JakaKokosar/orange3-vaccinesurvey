@@ -1,10 +1,12 @@
 """Import samples widget"""
 import requests
-
+import os
+import requests_cache
 
 from AnyQt.QtWidgets import QLineEdit
 from AnyQt.QtWidgets import QSizePolicy as Policy
 
+from Orange.misc import environ
 from Orange.data import Table
 from Orange.widgets.widget import OWWidget
 from Orange.widgets import gui, settings
@@ -12,6 +14,16 @@ from Orange.widgets.utils.concurrent import ThreadExecutor, Task
 from ..resolwe import ResolweAPI, to_orange_table, ResolweCredentialsException, ResolweServerException
 
 error_red = 'QWidget { background-color:#FFCCCC;}'
+
+
+#  Support cache with requests_cache module
+cache_path = os.path.join(environ.cache_dir(), "resolwe")
+try:
+    os.makedirs(cache_path)
+except OSError:
+    pass
+cache_file = os.path.join(cache_path, 'vaccinesurvey_cache')
+requests_cache.install_cache(cache_name=cache_file, backend='sqlite')
 
 
 class OWImportSamples(OWWidget):
