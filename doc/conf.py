@@ -17,6 +17,7 @@ import sys
 import os
 import shlex
 
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -50,8 +51,8 @@ source_parsers = {".md": "recommonmark.parser.CommonMarkParser"}
 master_doc = 'index'
 
 # General information about the project.
-project = 'Orange3 Example Add-on'
-copyright = '2015, Biolab'
+project = 'Orange3 Vaccine Survey'
+copyright = '2017, Biolab'
 author = 'Biolab'
 
 # The version info for the project you're documenting, acts as replacement for
