@@ -9,10 +9,13 @@ from Orange.data import ContinuousVariable, StringVariable, TimeVariable, Discre
 
 IMMUNOLOGICAL_DATA = [('Ama1', 'ama1'), ('Msp1', 'msp1'), ('Msp2', 'msp2'),
                       ('Nanp', 'nanp'), ('Total ige', 'total_ige')]
-
+LOCATION = [('Latitude', 'latitude'), ('longitude', 'longitude')]
 DATE = [('Birth date', 'birth_date'), ('Entry Date', 'entry_date')]
 METAS = [('Study code', 'study_code')]
-DISCRETE = [('Sex', 'sex'), ('Ethnicity', 'ethnicity'), ('Village Code', 'village_code')]
+CONTINUOS = [('Body temp', 'body_temp')]
+DISCRETE = [('Village Code', 'village_code'), ('Sex', 'sex'), ('Ethnicity', 'ethnicity'), ('Fever', 'fever'),
+            ('Anti-malarial treatment', 'antimalaria_treatment'), ('Hospital visit', 'hospital_visit'),
+            ('Vomit', 'vomit'),  ('Cough', 'cough'), ('Diarrhoea', 'diarrhoea'), ('Bednet', 'bednet')]
 
 
 def _add_discrete_value(variable, val):
@@ -24,6 +27,8 @@ def _add_discrete_value(variable, val):
 def to_orange_table(samples):
     #  Create variables
     immuno_data = [ContinuousVariable.make(var[0]) for var in IMMUNOLOGICAL_DATA]
+    continouos_data = [ContinuousVariable.make(var[0]) for var in CONTINUOS]
+    location_data = [ContinuousVariable(name=var[0], number_of_decimals=7) for var in LOCATION]
     discrete_vars = [DiscreteVariable.make(var[0]) for var in DISCRETE]   # we add values later
     date_vars = [TimeVariable.make(var[0]) for var in DATE]
     #  Create metas
@@ -34,6 +39,8 @@ def to_orange_table(samples):
         """ return a list of values from sample descriptor """
         metas = [descriptor[value[1]] for value in METAS]
         immuno_data = [descriptor['immunological_data'][value[1]] for value in IMMUNOLOGICAL_DATA]
+        continouos_data = [descriptor[value[1]] for value in CONTINUOS]
+        location_data = [descriptor['location'][value[1]] for value in LOCATION]
         discrete_data = [str(descriptor[value[1]]) for value in DISCRETE]
         date_data = [str(datetime.datetime.strptime(descriptor[value[1]], "%Y-%m-%d").date()) for value in DATE
                      if descriptor[value[1]]]
@@ -42,14 +49,14 @@ def to_orange_table(samples):
         for value in DISCRETE:
             [_add_discrete_value(var,  str(descriptor[value[1]])) for var in discrete_vars if var.name == value[0]]
 
-        return immuno_data + discrete_data + date_data + metas
+        return immuno_data + continouos_data + location_data + discrete_data + date_data + metas
 
     #  Create table
     table = []
     for sample in samples:
         table.append(_parse_descriptor(sample.descriptor['sample']))
     #  Create domain
-    domain = Domain(immuno_data + discrete_vars + date_vars, metas=meta_attrs)
+    domain = Domain(immuno_data + continouos_data + location_data + discrete_vars + date_vars, metas=meta_attrs)
 
     return Table(domain, table)
 
