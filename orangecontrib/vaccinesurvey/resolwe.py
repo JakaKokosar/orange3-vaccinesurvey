@@ -1,64 +1,78 @@
-"""Resolwe api"""
-import requests
+"""Resolwe API"""
 import datetime
+from collections import OrderedDict
 
-
+import requests
 from resdk import Resolwe
 from Orange.data import ContinuousVariable, StringVariable, TimeVariable, DiscreteVariable, Domain, Table
 
 
-IMMUNOLOGICAL_DATA = [('Ama1', 'ama1'), ('Msp1', 'msp1'), ('Msp2', 'msp2'),
-                      ('Nanp', 'nanp'), ('Total ige', 'total_ige')]
-LOCATION = [('Latitude', 'latitude'), ('longitude', 'longitude')]
-DATE = [('Birth date', 'birth_date'), ('Entry Date', 'entry_date')]
-METAS = [('Study code', 'study_code')]
-CONTINUOS = [('Body temp', 'body_temp')]
-DISCRETE = [('Village Code', 'village_code'), ('Sex', 'sex'), ('Ethnicity', 'ethnicity'), ('Fever', 'fever'),
-            ('Anti-malarial treatment', 'antimalaria_treatment'), ('Hospital visit', 'hospital_visit'),
-            ('Vomit', 'vomit'),  ('Cough', 'cough'), ('Diarrhoea', 'diarrhoea'), ('Bednet', 'bednet')]
+DATA = [
+    ['sex', {'type': DiscreteVariable}],
+    ['entry_date', {'type': TimeVariable}],
+    ['birth_date', {'type': TimeVariable}],
+    ['village_code', {'type': DiscreteVariable}],
+    ['latitude', {'type': ContinuousVariable, 'group': 'location'}],
+    ['longitude', {'type': ContinuousVariable, 'group': 'location'}],
+    ['ethnicity', {'type': DiscreteVariable}],
+    ['fever', {'type': DiscreteVariable}],
+    ['antimalaria_treatment', {'type': DiscreteVariable}],
+    ['hospital_visit', {'type': DiscreteVariable}],
+    ['vomit', {'type': DiscreteVariable}],
+    ['cough', {'type': DiscreteVariable}],
+    ['diarrhoea', {'type': DiscreteVariable}],
+    ['bednet', {'type': DiscreteVariable}],
+    ['body_temp', {'type': ContinuousVariable}],
+    ['ama1', {'type': ContinuousVariable, 'group': 'immunological_data'}],
+    ['msp1', {'type': ContinuousVariable, 'group': 'immunological_data'}],
+    ['msp2', {'type': ContinuousVariable, 'group': 'immunological_data'}],
+    ['nanp', {'type': ContinuousVariable, 'group': 'immunological_data'}],
+    ['total_ige', {'type': ContinuousVariable, 'group': 'immunological_data'}],
+]
+METAS = [
+    ['study_code', {'type': StringVariable}],
+]
 
 
-def _add_discrete_value(variable, val):
-    """ Checks if item is in values. If its not it will add it """
-    if val not in variable.values:
-        variable.add_value(val)
+def _parse_sample_descriptor(descriptor):
+    """Return a list of values from sample descriptor."""
+    data = []
+    for var in DATA:
+        value = None  # Prevent assigning previous value if current one is missing
+        if 'group' in var[1]:
+            if descriptor.get(var[1]['group'], None):
+                value = descriptor[var[1]['group']][var[0]]
+        else:
+            value = descriptor.get(var[0], None)
+
+        # Format discrete and time variables:
+        if value is not None and var[1]['type'] in [DiscreteVariable, TimeVariable] and not isinstance(value, bool):
+            value = str(value)
+
+        data.append(value)
+
+    metas = [descriptor.get(var[0], None) for var in METAS]
+    return data + metas
 
 
 def to_orange_table(samples):
-    #  Create variables
-    immuno_data = [ContinuousVariable.make(var[0]) for var in IMMUNOLOGICAL_DATA]
-    continouos_data = [ContinuousVariable.make(var[0]) for var in CONTINUOS]
-    location_data = [ContinuousVariable(name=var[0], number_of_decimals=7) for var in LOCATION]
-    discrete_vars = [DiscreteVariable.make(var[0]) for var in DISCRETE]   # we add values later
-    date_vars = [TimeVariable.make(var[0]) for var in DATE]
-    #  Create metas
-    meta_attrs = [StringVariable.make(meta[0]) for meta in METAS]
-
-    #  Parse sample descriptor
-    def _parse_descriptor(descriptor):
-        """ return a list of values from sample descriptor """
-        metas = [descriptor[value[1]] for value in METAS]
-        immuno_data = [descriptor['immunological_data'][value[1]] for value in IMMUNOLOGICAL_DATA]
-        continouos_data = [descriptor[value[1]] for value in CONTINUOS]
-        location_data = [descriptor['location'][value[1]] for value in LOCATION]
-        discrete_data = [str(descriptor[value[1]]) for value in DISCRETE]
-        date_data = [str(datetime.datetime.strptime(descriptor[value[1]], "%Y-%m-%d").date()) for value in DATE
-                     if descriptor[value[1]]]
-
-        # add all possible values from descriptor to discrete variables
-        for value in DISCRETE:
-            [_add_discrete_value(var,  str(descriptor[value[1]])) for var in discrete_vars if var.name == value[0]]
-
-        return immuno_data + continouos_data + location_data + discrete_data + date_data + metas
-
-    #  Create table
+    """Parse data from samples to Orange.data.Table"""
+    #  Create table and fill it with sample data:
     table = []
     for sample in samples:
-        table.append(_parse_descriptor(sample.descriptor['sample']))
-    #  Create domain
-    domain = Domain(immuno_data + continouos_data + location_data + discrete_vars + date_vars, metas=meta_attrs)
+        table.append(_parse_sample_descriptor(sample.descriptor['sample']))
 
-    return Table(domain, table)
+    #  Create domain (header in table):
+    header = [var[1]['type'].make(var[0]) for var in DATA]
+
+    # It is necessary to provide all possible values for dicrete variable with
+    # Iterate through all discrete variables in header:
+    for head_, i in [(var, i) for i, (var, dat) in enumerate(zip(header, DATA)) if dat[1]['type'] == DiscreteVariable]:
+        # Provide all possible values for discrete_var:
+        head_.values = list(set([sample[i] for sample in table]))
+
+    metas = [var[1]['type'].make(var[0]) for var in METAS]
+    return Table(Domain(header, metas=metas), table)
 
 
 class ResolweAPI(object):
